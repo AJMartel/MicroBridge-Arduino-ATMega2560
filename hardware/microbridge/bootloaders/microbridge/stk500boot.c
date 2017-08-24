@@ -589,10 +589,10 @@ int main(void)
        
     
 	// check if WDT generated the reset, if so, go straight to app
-	if (mcuStatusReg & _BV(WDRF))
-	{
-		app_start();
-	}
+	//if (mcuStatusReg & _BV(WDRF))
+	//{
+		//app_start();
+	//}
 	//************************************************************************
 #endif
 
