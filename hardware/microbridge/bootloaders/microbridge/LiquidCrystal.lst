@@ -1,0 +1,1413 @@
+   1               		.file	"LiquidCrystal.c"
+   2               	__SP_H__ = 0x3e
+   3               	__SP_L__ = 0x3d
+   4               	__SREG__ = 0x3f
+   5               	__RAMPZ__ = 0x3b
+   6               	__tmp_reg__ = 0
+   7               	__zero_reg__ = 1
+   8               		.text
+   9               	.Ltext0:
+  10               		.cfi_sections	.debug_frame
+  11               	.global	setRowOffsets
+  13               	setRowOffsets:
+  14               	.LFB9:
+  15               		.file 1 "LiquidCrystal.c"
+   1:LiquidCrystal.c **** #include "LiquidCrystal.h"
+   2:LiquidCrystal.c **** 
+   3:LiquidCrystal.c **** #include <stdio.h>
+   4:LiquidCrystal.c **** //#include <string.h>
+   5:LiquidCrystal.c **** #include <inttypes.h>
+   6:LiquidCrystal.c **** //#include "Arduino.h"
+   7:LiquidCrystal.c **** #include	<util/delay.h>
+   8:LiquidCrystal.c **** #include	<avr/io.h>
+   9:LiquidCrystal.c **** 
+  10:LiquidCrystal.c **** uint8_t g_displayfunction;
+  11:LiquidCrystal.c **** uint8_t g_displaycontrol;
+  12:LiquidCrystal.c **** uint8_t g_displaymode;
+  13:LiquidCrystal.c **** 
+  14:LiquidCrystal.c **** uint8_t g_initialized;
+  15:LiquidCrystal.c **** 
+  16:LiquidCrystal.c **** uint8_t g_numlines;
+  17:LiquidCrystal.c **** uint8_t g_row_offsets[4];
+  18:LiquidCrystal.c **** 
+  19:LiquidCrystal.c **** 
+  20:LiquidCrystal.c **** void begin(uint8_t cols, uint8_t lines);
+  21:LiquidCrystal.c **** void setRowOffsets(int row0, int row1, int row2, int row3);
+  22:LiquidCrystal.c **** void command(uint8_t value);
+  23:LiquidCrystal.c **** 
+  24:LiquidCrystal.c **** void send(uint8_t value, uint8_t mode);
+  25:LiquidCrystal.c **** void pulseEnable(void);
+  26:LiquidCrystal.c **** void write4bits(uint8_t value);
+  27:LiquidCrystal.c **** void write8bits(uint8_t value);
+  28:LiquidCrystal.c **** // When the display powers up, it is configured as follows:
+  29:LiquidCrystal.c **** //
+  30:LiquidCrystal.c **** // 1. Display clear
+  31:LiquidCrystal.c **** // 2. Function set:
+  32:LiquidCrystal.c **** //    DL = 1; 8-bit interface data
+  33:LiquidCrystal.c **** //    N = 0; 1-line display
+  34:LiquidCrystal.c **** //    F = 0; 5x8 dot character font
+  35:LiquidCrystal.c **** // 3. Display on/off control:
+  36:LiquidCrystal.c **** //    D = 0; Display off
+  37:LiquidCrystal.c **** //    C = 0; Cursor off
+  38:LiquidCrystal.c **** //    B = 0; Blinking off
+  39:LiquidCrystal.c **** // 4. Entry mode set:
+  40:LiquidCrystal.c **** //    I/D = 1; Increment by 1
+  41:LiquidCrystal.c **** //    S = 0; No shift
+  42:LiquidCrystal.c **** //
+  43:LiquidCrystal.c **** // Note, however, that resetting the Arduino doesn't reset the LCD, so we
+  44:LiquidCrystal.c **** // can't assume that its in that state when a sketch starts (and the
+  45:LiquidCrystal.c **** // LiquidCrystal constructor is called).
+  46:LiquidCrystal.c **** 
+  47:LiquidCrystal.c **** void LiquidCrystalinit(void)
+  48:LiquidCrystal.c **** {
+  49:LiquidCrystal.c ****   DDRA = DDRA | 1; //switch on power pin to periferals card
+  50:LiquidCrystal.c ****   PORTA = PORTA | 1;
+  51:LiquidCrystal.c ****   DDRL = DDRL | 0x10; //switch on power pin backlight
+  52:LiquidCrystal.c ****   PORTL = PORTL & 0xEF;
+  53:LiquidCrystal.c ****   _delay_us(500);
+  54:LiquidCrystal.c **** 
+  55:LiquidCrystal.c ****   DDRB = DDRB | 0x80; //switch on power pin backlight
+  56:LiquidCrystal.c ****   PORTB = PORTB | 0x80;
+  57:LiquidCrystal.c **** 
+  58:LiquidCrystal.c **** 
+  59:LiquidCrystal.c ****   //pinMode(rs_pin, OUTPUT);
+  60:LiquidCrystal.c ****   DDRK = DDRK | 0x40; //rs pin set as output
+  61:LiquidCrystal.c ****   //PORTK = PORTK | 0x20;
+  62:LiquidCrystal.c **** 
+  63:LiquidCrystal.c ****   // we can save 1 pin by not using RW. Indicate by passing 255 instead of pin#
+  64:LiquidCrystal.c ****   /*if (rw_pin != 255) {
+  65:LiquidCrystal.c ****     pinMode(rw_pin, OUTPUT);
+  66:LiquidCrystal.c ****   }*/
+  67:LiquidCrystal.c **** 
+  68:LiquidCrystal.c ****   //pinMode(enable_pin, OUTPUT);
+  69:LiquidCrystal.c ****     DDRK = DDRK | 0x80; //enable_pin set as output
+  70:LiquidCrystal.c **** 
+  71:LiquidCrystal.c ****   if (fourbitmode)
+  72:LiquidCrystal.c ****     g_displayfunction = LCD_4BITMODE | LCD_1LINE | LCD_5x8DOTS;
+  73:LiquidCrystal.c ****   else
+  74:LiquidCrystal.c ****     g_displayfunction = LCD_8BITMODE | LCD_1LINE | LCD_5x8DOTS;
+  75:LiquidCrystal.c **** 
+  76:LiquidCrystal.c ****   begin(20, 4);
+  77:LiquidCrystal.c **** }
+  78:LiquidCrystal.c **** 
+  79:LiquidCrystal.c **** void begin(uint8_t cols, uint8_t lines) {
+  80:LiquidCrystal.c ****   if (lines > 1) {
+  81:LiquidCrystal.c ****     g_displayfunction |= LCD_2LINE;
+  82:LiquidCrystal.c ****   }
+  83:LiquidCrystal.c ****   g_numlines = lines;
+  84:LiquidCrystal.c **** 
+  85:LiquidCrystal.c ****   setRowOffsets(0x00, 0x40, 0x00 + cols, 0x40 + cols);
+  86:LiquidCrystal.c **** 
+  87:LiquidCrystal.c ****   // for some 1 line displays you can select a 10 pixel high font
+  88:LiquidCrystal.c ****   //if ((dotsize != LCD_5x8DOTS) && (lines == 1)) {
+  89:LiquidCrystal.c ****     //g_displayfunction |= LCD_5x10DOTS;
+  90:LiquidCrystal.c ****   //}
+  91:LiquidCrystal.c **** 
+  92:LiquidCrystal.c ****   // SEE PAGE 45/46 FOR INITIALIZATION SPECIFICATION!
+  93:LiquidCrystal.c ****   // according to datasheet, we need at least 40ms after power rises above 2.7V
+  94:LiquidCrystal.c ****   // before sending commands. Arduino can turn on way before 4.5V so we'll wait 50
+  95:LiquidCrystal.c ****   _delay_us(50000);
+  96:LiquidCrystal.c ****   // Now we pull both RS and R/W low to begin commands
+  97:LiquidCrystal.c ****   //digitalWrite(rs_pin, LOW);
+  98:LiquidCrystal.c ****   rs_low;
+  99:LiquidCrystal.c ****   enable_low;
+ 100:LiquidCrystal.c ****   //digitalWrite(enable_pin, LOW);
+ 101:LiquidCrystal.c ****   /*if (rw_pin != 255) {
+ 102:LiquidCrystal.c ****     digitalWrite(rw_pin, LOW);
+ 103:LiquidCrystal.c ****   }*/
+ 104:LiquidCrystal.c **** 
+ 105:LiquidCrystal.c ****   //put the LCD into 4 bit or 8 bit mode
+ 106:LiquidCrystal.c ****   if (! (g_displayfunction & LCD_8BITMODE)) {
+ 107:LiquidCrystal.c ****     // this is according to the hitachi HD44780 datasheet
+ 108:LiquidCrystal.c ****     // figure 24, pg 46
+ 109:LiquidCrystal.c **** 
+ 110:LiquidCrystal.c ****     // we start in 8bit mode, try to set 4 bit mode
+ 111:LiquidCrystal.c ****     write4bits(0x03);
+ 112:LiquidCrystal.c ****     _delay_us(4500); // wait min 4.1ms
+ 113:LiquidCrystal.c **** 
+ 114:LiquidCrystal.c ****     // second try
+ 115:LiquidCrystal.c ****     write4bits(0x03);
+ 116:LiquidCrystal.c ****     _delay_us(4500); // wait min 4.1ms
+ 117:LiquidCrystal.c **** 
+ 118:LiquidCrystal.c ****     // third go!
+ 119:LiquidCrystal.c ****     write4bits(0x03);
+ 120:LiquidCrystal.c ****     _delay_us(150);
+ 121:LiquidCrystal.c **** 
+ 122:LiquidCrystal.c ****     // finally, set to 4-bit interface
+ 123:LiquidCrystal.c ****     write4bits(0x02);
+ 124:LiquidCrystal.c ****   } else {
+ 125:LiquidCrystal.c ****     // this is according to the hitachi HD44780 datasheet
+ 126:LiquidCrystal.c ****     // page 45 figure 23
+ 127:LiquidCrystal.c **** 
+ 128:LiquidCrystal.c ****     // Send function set command sequence
+ 129:LiquidCrystal.c ****     command(LCD_FUNCTIONSET | g_displayfunction);
+ 130:LiquidCrystal.c ****     _delay_us(4500);  // wait more than 4.1ms
+ 131:LiquidCrystal.c **** 
+ 132:LiquidCrystal.c ****     // second try
+ 133:LiquidCrystal.c ****     command(LCD_FUNCTIONSET | g_displayfunction);
+ 134:LiquidCrystal.c ****     _delay_us(150);
+ 135:LiquidCrystal.c **** 
+ 136:LiquidCrystal.c ****     // third go
+ 137:LiquidCrystal.c ****     command(LCD_FUNCTIONSET | g_displayfunction);
+ 138:LiquidCrystal.c ****   }
+ 139:LiquidCrystal.c **** 
+ 140:LiquidCrystal.c ****   // finally, set # lines, font size, etc.
+ 141:LiquidCrystal.c ****   command(LCD_FUNCTIONSET | g_displayfunction);
+ 142:LiquidCrystal.c **** 
+ 143:LiquidCrystal.c ****   // turn the display on with no cursor or blinking default
+ 144:LiquidCrystal.c ****   g_displaycontrol = LCD_DISPLAYON | LCD_CURSOROFF | LCD_BLINKOFF;
+ 145:LiquidCrystal.c ****   LiquidCrystaldisplay();
+ 146:LiquidCrystal.c **** 
+ 147:LiquidCrystal.c ****   // clear it off
+ 148:LiquidCrystal.c ****   LiquidCrystalclear();
+ 149:LiquidCrystal.c **** 
+ 150:LiquidCrystal.c ****   // Initialize to default text direction (for romance languages)
+ 151:LiquidCrystal.c ****   g_displaymode = LCD_ENTRYLEFT | LCD_ENTRYSHIFTDECREMENT;
+ 152:LiquidCrystal.c ****   // set the entry mode
+ 153:LiquidCrystal.c ****   command(LCD_ENTRYMODESET | g_displaymode);
+ 154:LiquidCrystal.c **** 
+ 155:LiquidCrystal.c **** }
+ 156:LiquidCrystal.c **** 
+ 157:LiquidCrystal.c **** /*
+ 158:LiquidCrystal.c ****    in some 16x4 LCD when line 3 and 4 are not placed correctly you may try:
+ 159:LiquidCrystal.c ****      setRowOffsets(0x00, 0x40, 0x14, 0x54)
+ 160:LiquidCrystal.c ****    or
+ 161:LiquidCrystal.c ****      setRowOffsets(0x00, 0x40, 0x10, 0x50)
+ 162:LiquidCrystal.c ****  */
+ 163:LiquidCrystal.c **** void setRowOffsets(int row0, int row1, int row2, int row3)
+ 164:LiquidCrystal.c **** {
+  16               		.loc 1 164 0
+  17               		.cfi_startproc
+  18               	.LVL0:
+  19               	/* prologue: function */
+  20               	/* frame size = 0 */
+  21               	/* stack size = 0 */
+  22               	.L__stack_usage = 0
+ 165:LiquidCrystal.c ****   g_row_offsets[0] = row0;
+  23               		.loc 1 165 0
+  24 0000 E0E0      		ldi r30,lo8(g_row_offsets)
+  25 0002 F0E0      		ldi r31,hi8(g_row_offsets)
+  26 0004 8083      		st Z,r24
+ 166:LiquidCrystal.c ****   g_row_offsets[1] = row1;
+  27               		.loc 1 166 0
+  28 0006 6183      		std Z+1,r22
+ 167:LiquidCrystal.c ****   g_row_offsets[2] = row2;
+  29               		.loc 1 167 0
+  30 0008 4283      		std Z+2,r20
+ 168:LiquidCrystal.c ****   g_row_offsets[3] = row3;
+  31               		.loc 1 168 0
+  32 000a 2383      		std Z+3,r18
+  33 000c 0895      		ret
+  34               		.cfi_endproc
+  35               	.LFE9:
+  37               	.global	pulseEnable
+  39               	pulseEnable:
+  40               	.LFB18:
+ 169:LiquidCrystal.c **** }
+ 170:LiquidCrystal.c **** 
+ 171:LiquidCrystal.c **** /********** high level commands, for the user! */
+ 172:LiquidCrystal.c **** void LiquidCrystalclear(void)
+ 173:LiquidCrystal.c **** {
+ 174:LiquidCrystal.c ****   command(LCD_CLEARDISPLAY);  // clear display, set cursor position to zero
+ 175:LiquidCrystal.c ****   _delay_us(2000);  // this command takes a long time!
+ 176:LiquidCrystal.c **** }
+ 177:LiquidCrystal.c **** 
+ 178:LiquidCrystal.c **** void LiquidCrystalhome(void)
+ 179:LiquidCrystal.c **** {
+ 180:LiquidCrystal.c ****   command(LCD_RETURNHOME);  // set cursor position to zero
+ 181:LiquidCrystal.c ****   _delay_us(2000);  // this command takes a long time!
+ 182:LiquidCrystal.c **** }
+ 183:LiquidCrystal.c **** 
+ 184:LiquidCrystal.c **** void LiquidCrystalsetCursor(uint8_t col, uint8_t row)
+ 185:LiquidCrystal.c **** {
+ 186:LiquidCrystal.c ****   const size_t max_lines = sizeof(g_row_offsets) / sizeof(*g_row_offsets);
+ 187:LiquidCrystal.c ****   if ( row >= max_lines ) {
+ 188:LiquidCrystal.c ****     row = max_lines - 1;    // we count rows starting w/0
+ 189:LiquidCrystal.c ****   }
+ 190:LiquidCrystal.c ****   if ( row >= g_numlines ) {
+ 191:LiquidCrystal.c ****     row = g_numlines - 1;    // we count rows starting w/0
+ 192:LiquidCrystal.c ****   }
+ 193:LiquidCrystal.c **** 
+ 194:LiquidCrystal.c ****   command(LCD_SETDDRAMADDR | (col + g_row_offsets[row]));
+ 195:LiquidCrystal.c **** }
+ 196:LiquidCrystal.c **** 
+ 197:LiquidCrystal.c **** // Turn the display on/off (quickly)
+ 198:LiquidCrystal.c **** void LiquidCrystaldisplay(void) {
+ 199:LiquidCrystal.c ****   g_displaycontrol |= LCD_DISPLAYON;
+ 200:LiquidCrystal.c ****   command(LCD_DISPLAYCONTROL | g_displaycontrol);
+ 201:LiquidCrystal.c **** }
+ 202:LiquidCrystal.c **** /*
+ 203:LiquidCrystal.c **** void LiquidCrystalnoDisplay(void) {
+ 204:LiquidCrystal.c ****   g_displaycontrol &= ~LCD_DISPLAYON;
+ 205:LiquidCrystal.c ****   command(LCD_DISPLAYCONTROL | g_displaycontrol);
+ 206:LiquidCrystal.c **** }
+ 207:LiquidCrystal.c **** 
+ 208:LiquidCrystal.c **** 
+ 209:LiquidCrystal.c **** // Turns the underline cursor on/off
+ 210:LiquidCrystal.c **** void LiquidCrystalnoCursor(void) {
+ 211:LiquidCrystal.c ****   g_displaycontrol &= ~LCD_CURSORON;
+ 212:LiquidCrystal.c ****   command(LCD_DISPLAYCONTROL | g_displaycontrol);
+ 213:LiquidCrystal.c **** }
+ 214:LiquidCrystal.c **** void LiquidCrystalcursor(void) {
+ 215:LiquidCrystal.c ****   g_displaycontrol |= LCD_CURSORON;
+ 216:LiquidCrystal.c ****   command(LCD_DISPLAYCONTROL | g_displaycontrol);
+ 217:LiquidCrystal.c **** }
+ 218:LiquidCrystal.c **** 
+ 219:LiquidCrystal.c **** // Turn on and off the blinking cursor
+ 220:LiquidCrystal.c **** void LiquidCrystalnoBlink(void) {
+ 221:LiquidCrystal.c ****   g_displaycontrol &= ~LCD_BLINKON;
+ 222:LiquidCrystal.c ****   command(LCD_DISPLAYCONTROL | g_displaycontrol);
+ 223:LiquidCrystal.c **** }
+ 224:LiquidCrystal.c **** void LiquidCrystalblink(void) {
+ 225:LiquidCrystal.c ****   g_displaycontrol |= LCD_BLINKON;
+ 226:LiquidCrystal.c ****   command(LCD_DISPLAYCONTROL | g_displaycontrol);
+ 227:LiquidCrystal.c **** }
+ 228:LiquidCrystal.c **** 
+ 229:LiquidCrystal.c **** // These commands scroll the display without changing the RAM
+ 230:LiquidCrystal.c **** void LiquidCrystalscrollDisplayLeft(void) {
+ 231:LiquidCrystal.c ****   command(LCD_CURSORSHIFT | LCD_DISPLAYMOVE | LCD_MOVELEFT);
+ 232:LiquidCrystal.c **** }
+ 233:LiquidCrystal.c **** void LiquidCrystalscrollDisplayRight(void) {
+ 234:LiquidCrystal.c ****   command(LCD_CURSORSHIFT | LCD_DISPLAYMOVE | LCD_MOVERIGHT);
+ 235:LiquidCrystal.c **** }
+ 236:LiquidCrystal.c **** 
+ 237:LiquidCrystal.c **** // This is for text that flows Left to Right
+ 238:LiquidCrystal.c **** void LiquidCrystalleftToRight(void) {
+ 239:LiquidCrystal.c ****   g_displaymode |= LCD_ENTRYLEFT;
+ 240:LiquidCrystal.c ****   command(LCD_ENTRYMODESET | g_displaymode);
+ 241:LiquidCrystal.c **** }
+ 242:LiquidCrystal.c **** 
+ 243:LiquidCrystal.c **** // This is for text that flows Right to Left
+ 244:LiquidCrystal.c **** void LiquidCrystalrightToLeft(void) {
+ 245:LiquidCrystal.c ****   g_displaymode &= ~LCD_ENTRYLEFT;
+ 246:LiquidCrystal.c ****   command(LCD_ENTRYMODESET | g_displaymode);
+ 247:LiquidCrystal.c **** }
+ 248:LiquidCrystal.c **** 
+ 249:LiquidCrystal.c **** // This will 'right justify' text from the cursor
+ 250:LiquidCrystal.c **** void LiquidCrystalautoscroll(void) {
+ 251:LiquidCrystal.c ****   g_displaymode |= LCD_ENTRYSHIFTINCREMENT;
+ 252:LiquidCrystal.c ****   command(LCD_ENTRYMODESET | g_displaymode);
+ 253:LiquidCrystal.c **** }
+ 254:LiquidCrystal.c **** 
+ 255:LiquidCrystal.c **** // This will 'left justify' text from the cursor
+ 256:LiquidCrystal.c **** void LiquidCrystalnoAutoscroll(void) {
+ 257:LiquidCrystal.c ****   g_displaymode &= ~LCD_ENTRYSHIFTINCREMENT;
+ 258:LiquidCrystal.c ****   command(LCD_ENTRYMODESET | g_displaymode);
+ 259:LiquidCrystal.c **** }
+ 260:LiquidCrystal.c **** 
+ 261:LiquidCrystal.c **** // Allows us to fill the first 8 CGRAM locations
+ 262:LiquidCrystal.c **** // with custom characters
+ 263:LiquidCrystal.c **** /*
+ 264:LiquidCrystal.c **** void LiquidCrystalcreateChar(uint8_t location, uint8_t charmap[]) {
+ 265:LiquidCrystal.c ****   location &= 0x7; // we only have 8 locations 0-7
+ 266:LiquidCrystal.c ****   command(LCD_SETCGRAMADDR | (location << 3));
+ 267:LiquidCrystal.c ****   for (int i=0; i<8; i++) {
+ 268:LiquidCrystal.c ****     LCDwrite(charmap[i]);
+ 269:LiquidCrystal.c ****   }
+ 270:LiquidCrystal.c **** }*/
+ 271:LiquidCrystal.c **** 
+ 272:LiquidCrystal.c **** /*********** mid level commands, for sending data/cmds */
+ 273:LiquidCrystal.c **** 
+ 274:LiquidCrystal.c **** void command(uint8_t value) {
+ 275:LiquidCrystal.c ****   send(value, LOW);
+ 276:LiquidCrystal.c **** }
+ 277:LiquidCrystal.c **** 
+ 278:LiquidCrystal.c **** uint8_t LCDwrite(uint8_t value) {
+ 279:LiquidCrystal.c ****   send(value, HIGH);
+ 280:LiquidCrystal.c ****   return 1; // assume sucess
+ 281:LiquidCrystal.c **** }
+ 282:LiquidCrystal.c **** 
+ 283:LiquidCrystal.c **** void LCDprint(const char *str,uint8_t len){
+ 284:LiquidCrystal.c ****   for (int i=0;i<len;i++){
+ 285:LiquidCrystal.c ****     LCDwrite(str[i]);
+ 286:LiquidCrystal.c ****   }
+ 287:LiquidCrystal.c **** }
+ 288:LiquidCrystal.c **** 
+ 289:LiquidCrystal.c **** /************ low level data pushing commands **********/
+ 290:LiquidCrystal.c **** 
+ 291:LiquidCrystal.c **** // write either command or data, with automatic 4/8-bit selection
+ 292:LiquidCrystal.c **** void send(uint8_t value, uint8_t mode) {
+ 293:LiquidCrystal.c ****   //digitalWrite(rs_pin, mode);
+ 294:LiquidCrystal.c ****   if (mode){
+ 295:LiquidCrystal.c ****     rs_high;
+ 296:LiquidCrystal.c ****   }
+ 297:LiquidCrystal.c ****   else{
+ 298:LiquidCrystal.c ****     rs_low;
+ 299:LiquidCrystal.c ****   }
+ 300:LiquidCrystal.c **** 
+ 301:LiquidCrystal.c ****   // if there is a RW pin indicated, set it low to Write
+ 302:LiquidCrystal.c ****   /*if (rw_pin != 255) {
+ 303:LiquidCrystal.c ****     digitalWrite(rw_pin, LOW);
+ 304:LiquidCrystal.c ****   }*/
+ 305:LiquidCrystal.c **** 
+ 306:LiquidCrystal.c ****   //if (g_displayfunction & LCD_8BITMODE) {
+ 307:LiquidCrystal.c ****     //write8bits(value);
+ 308:LiquidCrystal.c ****   //} else {
+ 309:LiquidCrystal.c ****     write4bits(value>>4);
+ 310:LiquidCrystal.c ****     write4bits(value);
+ 311:LiquidCrystal.c ****   //}
+ 312:LiquidCrystal.c **** }
+ 313:LiquidCrystal.c **** 
+ 314:LiquidCrystal.c **** void pulseEnable(void) {
+  41               		.loc 1 314 0
+  42               		.cfi_startproc
+  43               	/* prologue: function */
+  44               	/* frame size = 0 */
+  45               	/* stack size = 0 */
+  46               	.L__stack_usage = 0
+ 315:LiquidCrystal.c ****   //digitalWrite(enable_pin, LOW);
+ 316:LiquidCrystal.c ****   enable_low;
+  47               		.loc 1 316 0
+  48 000e E8E0      		ldi r30,lo8(8)
+  49 0010 F1E0      		ldi r31,lo8(1)
+  50 0012 8081      		ld r24,Z
+  51 0014 8F77      		andi r24,lo8(127)
+  52 0016 8083      		st Z,r24
+  53               	.LVL1:
+  54               	.LBB28:
+  55               	.LBB29:
+  56               		.file 2 "c:\\program files (x86)\\arduino\\hardware\\tools\\avr\\avr\\include\\util\\delay.h"
+   1:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** /* Copyright (c) 2002, Marek Michalkiewicz
+   2:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    Copyright (c) 2004,2005,2007 Joerg Wunsch
+   3:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    Copyright (c) 2007  Florin-Viorel Petrov
+   4:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    All rights reserved.
+   5:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+   6:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    Redistribution and use in source and binary forms, with or without
+   7:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    modification, are permitted provided that the following conditions are met:
+   8:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+   9:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    * Redistributions of source code must retain the above copyright
+  10:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****      notice, this list of conditions and the following disclaimer.
+  11:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  12:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    * Redistributions in binary form must reproduce the above copyright
+  13:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****      notice, this list of conditions and the following disclaimer in
+  14:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****      the documentation and/or other materials provided with the
+  15:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****      distribution.
+  16:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  17:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    * Neither the name of the copyright holders nor the names of
+  18:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****      contributors may be used to endorse or promote products derived
+  19:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****      from this software without specific prior written permission.
+  20:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  21:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  22:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  23:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  24:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+  25:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+  26:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+  27:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  28:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+  29:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+  30:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  31:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   POSSIBILITY OF SUCH DAMAGE. */
+  32:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  33:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** /* $Id$ */
+  34:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  35:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #ifndef _UTIL_DELAY_H_
+  36:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #define _UTIL_DELAY_H_ 1
+  37:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  38:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #ifndef __DOXYGEN__
+  39:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #  ifndef __HAS_DELAY_CYCLES
+  40:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #    define __HAS_DELAY_CYCLES 1
+  41:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #  endif
+  42:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #endif  /* __DOXYGEN__ */
+  43:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  44:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #include <inttypes.h>
+  45:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #include <util/delay_basic.h>
+  46:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #include <math.h>
+  47:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  48:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** /** \file */
+  49:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** /** \defgroup util_delay <util/delay.h>: Convenience functions for busy-wait delay loops
+  50:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     \code
+  51:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     #define F_CPU 1000000UL  // 1 MHz
+  52:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     //#define F_CPU 14.7456E6
+  53:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     #include <util/delay.h>
+  54:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     \endcode
+  55:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  56:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     \note As an alternative method, it is possible to pass the
+  57:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     F_CPU macro down to the compiler from the Makefile.
+  58:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     Obviously, in that case, no \c \#define statement should be
+  59:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     used.
+  60:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  61:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     The functions in this header file are wrappers around the basic
+  62:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     busy-wait functions from <util/delay_basic.h>.  They are meant as
+  63:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     convenience functions where actual time values can be specified
+  64:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     rather than a number of cycles to wait for.  The idea behind is
+  65:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     that compile-time constant expressions will be eliminated by
+  66:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     compiler optimization so floating-point expressions can be used
+  67:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     to calculate the number of delay cycles needed based on the CPU
+  68:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     frequency passed by the macro F_CPU.
+  69:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  70:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     \note In order for these functions to work as intended, compiler
+  71:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     optimizations <em>must</em> be enabled, and the delay time
+  72:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     <em>must</em> be an expression that is a known constant at
+  73:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     compile-time.  If these requirements are not met, the resulting
+  74:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     delay will be much longer (and basically unpredictable), and
+  75:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     applications that otherwise do not use floating-point calculations
+  76:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     will experience severe code bloat by the floating-point library
+  77:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     routines linked into the application.
+  78:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  79:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     The functions available allow the specification of microsecond, and
+  80:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     millisecond delays directly, using the application-supplied macro
+  81:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     F_CPU as the CPU clock frequency (in Hertz).
+  82:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  83:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** */
+  84:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  85:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #if !defined(__DOXYGEN__)
+  86:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** static __inline__ void _delay_us(double __us) __attribute__((__always_inline__));
+  87:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** static __inline__ void _delay_ms(double __ms) __attribute__((__always_inline__));
+  88:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #endif
+  89:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  90:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #ifndef F_CPU
+  91:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** /* prevent compiler error by supplying a default */
+  92:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** # warning "F_CPU not defined for <util/delay.h>"
+  93:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** /** \ingroup util_delay
+  94:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     \def F_CPU
+  95:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     \brief CPU frequency in Hz
+  96:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+  97:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     The macro F_CPU specifies the CPU frequency to be considered by
+  98:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     the delay macros.  This macro is normally supplied by the
+  99:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     environment (e.g. from within a project header, or the project's
+ 100:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     Makefile).  The value 1 MHz here is only provided as a "vanilla"
+ 101:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     fallback if no such user-provided definition could be found.
+ 102:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 103:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     In terms of the delay functions, the CPU frequency can be given as
+ 104:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     a floating-point constant (e.g. 3.6864E6 for 3.6864 MHz).
+ 105:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     However, the macros in <util/setbaud.h> require it to be an
+ 106:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****     integer value.
+ 107:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****  */
+ 108:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** # define F_CPU 1000000UL
+ 109:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #endif
+ 110:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 111:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #ifndef __OPTIMIZE__
+ 112:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** # warning "Compiler optimizations disabled; functions from <util/delay.h> won't work as designed"
+ 113:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #endif
+ 114:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 115:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #if __HAS_DELAY_CYCLES && defined(__OPTIMIZE__) && \
+ 116:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   !defined(__DELAY_BACKWARD_COMPATIBLE__) &&	   \
+ 117:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   __STDC_HOSTED__
+ 118:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #  include <math.h>
+ 119:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #endif
+ 120:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 121:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** /**
+ 122:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    \ingroup util_delay
+ 123:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 124:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    Perform a delay of \c __ms milliseconds, using _delay_loop_2().
+ 125:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 126:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    The macro F_CPU is supposed to be defined to a
+ 127:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    constant defining the CPU clock frequency (in Hertz).
+ 128:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 129:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    The maximal possible delay is 262.14 ms / F_CPU in MHz.
+ 130:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 131:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    When the user request delay which exceed the maximum possible one,
+ 132:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    _delay_ms() provides a decreased resolution functionality. In this
+ 133:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    mode _delay_ms() will work with a resolution of 1/10 ms, providing
+ 134:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    delays up to 6.5535 seconds (independent from CPU frequency).  The
+ 135:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    user will not be informed about decreased resolution.
+ 136:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 137:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    If the avr-gcc toolchain has __builtin_avr_delay_cycles()
+ 138:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    support, maximal possible delay is 4294967.295 ms/ F_CPU in MHz. For
+ 139:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    values greater than the maximal possible delay, overflows results in
+ 140:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    no delay i.e., 0ms.
+ 141:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 142:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    Conversion of \c __ms into clock cycles may not always result in
+ 143:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    integer.  By default, the clock cycles rounded up to next
+ 144:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    integer. This ensures that the user gets at least \c __ms
+ 145:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    microseconds of delay.
+ 146:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 147:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    Alternatively, by defining the macro \c __DELAY_ROUND_DOWN__, or
+ 148:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    \c __DELAY_ROUND_CLOSEST__, before including this header file, the
+ 149:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    algorithm can be made to round down, or round to closest integer,
+ 150:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    respectively.
+ 151:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 152:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    \note
+ 153:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 154:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    The implementation of _delay_ms() based on
+ 155:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    __builtin_avr_delay_cycles() is not backward compatible with older
+ 156:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    implementations.  In order to get functionality backward compatible
+ 157:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    with previous versions, the macro \c "__DELAY_BACKWARD_COMPATIBLE__"
+ 158:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    must be defined before including this header file. Also, the
+ 159:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    backward compatible algorithm will be chosen if the code is
+ 160:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    compiled in a <em>freestanding environment</em> (GCC option
+ 161:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    \c -ffreestanding), as the math functions required for rounding are
+ 162:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    not available to the compiler then.
+ 163:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 164:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****  */
+ 165:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** void
+ 166:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** _delay_ms(double __ms)
+ 167:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** {
+ 168:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	double __tmp ;
+ 169:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #if __HAS_DELAY_CYCLES && defined(__OPTIMIZE__) && \
+ 170:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   !defined(__DELAY_BACKWARD_COMPATIBLE__) &&	   \
+ 171:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   __STDC_HOSTED__
+ 172:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	uint32_t __ticks_dc;
+ 173:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	extern void __builtin_avr_delay_cycles(unsigned long);
+ 174:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	__tmp = ((F_CPU) / 1e3) * __ms;
+ 175:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 176:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	#if defined(__DELAY_ROUND_DOWN__)
+ 177:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		__ticks_dc = (uint32_t)fabs(__tmp);
+ 178:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 179:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	#elif defined(__DELAY_ROUND_CLOSEST__)
+ 180:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		__ticks_dc = (uint32_t)(fabs(__tmp)+0.5);
+ 181:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 182:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	#else
+ 183:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		//round up by default
+ 184:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		__ticks_dc = (uint32_t)(ceil(fabs(__tmp)));
+ 185:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	#endif
+ 186:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 187:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	__builtin_avr_delay_cycles(__ticks_dc);
+ 188:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 189:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #else
+ 190:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	uint16_t __ticks;
+ 191:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	__tmp = ((F_CPU) / 4e3) * __ms;
+ 192:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	if (__tmp < 1.0)
+ 193:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		__ticks = 1;
+ 194:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	else if (__tmp > 65535)
+ 195:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	{
+ 196:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		//	__ticks = requested delay in 1/10 ms
+ 197:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		__ticks = (uint16_t) (__ms * 10.0);
+ 198:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		while(__ticks)
+ 199:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		{
+ 200:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 			// wait 1/10 ms
+ 201:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 			_delay_loop_2(((F_CPU) / 4e3) / 10);
+ 202:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 			__ticks --;
+ 203:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		}
+ 204:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		return;
+ 205:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	}
+ 206:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	else
+ 207:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		__ticks = (uint16_t)__tmp;
+ 208:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	_delay_loop_2(__ticks);
+ 209:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #endif
+ 210:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** }
+ 211:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 212:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** /**
+ 213:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    \ingroup util_delay
+ 214:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 215:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    Perform a delay of \c __us microseconds, using _delay_loop_1().
+ 216:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 217:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    The macro F_CPU is supposed to be defined to a
+ 218:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    constant defining the CPU clock frequency (in Hertz).
+ 219:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 220:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    The maximal possible delay is 768 us / F_CPU in MHz.
+ 221:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 222:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    If the user requests a delay greater than the maximal possible one,
+ 223:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    _delay_us() will automatically call _delay_ms() instead.  The user
+ 224:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    will not be informed about this case.
+ 225:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 226:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    If the avr-gcc toolchain has __builtin_avr_delay_cycles()
+ 227:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    support, maximal possible delay is 4294967.295 us/ F_CPU in MHz. For
+ 228:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    values greater than the maximal possible delay, overflow results in
+ 229:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    no delay i.e., 0us.
+ 230:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 231:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    Conversion of \c __us into clock cycles may not always result in
+ 232:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    integer.  By default, the clock cycles rounded up to next
+ 233:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    integer. This ensures that the user gets at least \c __us
+ 234:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    microseconds of delay.
+ 235:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 236:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    Alternatively, by defining the macro \c __DELAY_ROUND_DOWN__, or
+ 237:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    \c __DELAY_ROUND_CLOSEST__, before including this header file, the
+ 238:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    algorithm can be made to round down, or round to closest integer,
+ 239:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    respectively.
+ 240:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 241:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    \note
+ 242:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 243:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    The implementation of _delay_ms() based on
+ 244:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    __builtin_avr_delay_cycles() is not backward compatible with older
+ 245:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    implementations.  In order to get functionality backward compatible
+ 246:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    with previous versions, the macro \c __DELAY_BACKWARD_COMPATIBLE__
+ 247:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    must be defined before including this header file. Also, the
+ 248:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    backward compatible algorithm will be chosen if the code is
+ 249:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    compiled in a <em>freestanding environment</em> (GCC option
+ 250:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    \c -ffreestanding), as the math functions required for rounding are
+ 251:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****    not available to the compiler then.
+ 252:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 253:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****  */
+ 254:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** void
+ 255:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** _delay_us(double __us)
+ 256:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** {
+ 257:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	double __tmp ;
+ 258:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** #if __HAS_DELAY_CYCLES && defined(__OPTIMIZE__) && \
+ 259:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   !defined(__DELAY_BACKWARD_COMPATIBLE__) &&	   \
+ 260:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h ****   __STDC_HOSTED__
+ 261:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	uint32_t __ticks_dc;
+ 262:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	extern void __builtin_avr_delay_cycles(unsigned long);
+ 263:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	__tmp = ((F_CPU) / 1e6) * __us;
+ 264:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 265:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	#if defined(__DELAY_ROUND_DOWN__)
+ 266:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		__ticks_dc = (uint32_t)fabs(__tmp);
+ 267:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 268:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	#elif defined(__DELAY_ROUND_CLOSEST__)
+ 269:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		__ticks_dc = (uint32_t)(fabs(__tmp)+0.5);
+ 270:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 271:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	#else
+ 272:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		//round up by default
+ 273:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 		__ticks_dc = (uint32_t)(ceil(fabs(__tmp)));
+ 274:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	#endif
+ 275:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 
+ 276:c:\program files (x86)\arduino\hardware\tools\avr\avr\include\util\delay.h **** 	__builtin_avr_delay_cycles(__ticks_dc);
+  57               		.loc 2 276 0
+  58 0018 82E0      		ldi r24,lo8(2)
+  59 001a 8A95      	1:	dec r24
+  60 001c 01F4      		brne 1b
+  61 001e 00C0      		rjmp .
+  62               	.LBE29:
+  63               	.LBE28:
+ 317:LiquidCrystal.c ****   _delay_us(1);
+ 318:LiquidCrystal.c ****   //digitalWrite(enable_pin, HIGH);
+ 319:LiquidCrystal.c ****   enable_high;
+  64               		.loc 1 319 0
+  65 0020 8081      		ld r24,Z
+  66 0022 8068      		ori r24,lo8(-128)
+  67 0024 8083      		st Z,r24
+  68               	.LVL2:
+  69               	.LBB30:
+  70               	.LBB31:
+  71               		.loc 2 276 0
+  72 0026 92E0      		ldi r25,lo8(2)
+  73 0028 9A95      	1:	dec r25
+  74 002a 01F4      		brne 1b
+  75 002c 00C0      		rjmp .
+  76               	.LBE31:
+  77               	.LBE30:
+ 320:LiquidCrystal.c ****   _delay_us(1);    // enable pulse must be >450ns
+ 321:LiquidCrystal.c ****   //digitalWrite(enable_pin, LOW);
+ 322:LiquidCrystal.c ****   enable_low;
+  78               		.loc 1 322 0
+  79 002e 8081      		ld r24,Z
+  80 0030 8F77      		andi r24,lo8(127)
+  81 0032 8083      		st Z,r24
+  82               	.LVL3:
+  83               	.LBB32:
+  84               	.LBB33:
+  85               		.loc 2 276 0
+  86 0034 87EC      		ldi r24,lo8(199)
+  87 0036 90E0      		ldi r25,hi8(199)
+  88 0038 0197      	1:	sbiw r24,1
+  89 003a 01F4      		brne 1b
+  90 003c 00C0      		rjmp .
+  91 003e 0000      		nop
+  92 0040 0895      		ret
+  93               	.LBE33:
+  94               	.LBE32:
+  95               		.cfi_endproc
+  96               	.LFE18:
+  98               	.global	write4bits
+ 100               	write4bits:
+ 101               	.LFB19:
+ 323:LiquidCrystal.c ****   _delay_us(100);   // commands need > 37us to settle
+ 324:LiquidCrystal.c **** }
+ 325:LiquidCrystal.c **** 
+ 326:LiquidCrystal.c **** void write4bits(uint8_t value) {
+ 102               		.loc 1 326 0
+ 103               		.cfi_startproc
+ 104               	.LVL4:
+ 105               	/* prologue: function */
+ 106               	/* frame size = 0 */
+ 107               	/* stack size = 0 */
+ 108               	.L__stack_usage = 0
+ 327:LiquidCrystal.c ****   DDRL = DDRL | 0xCC; //set d0, d1,d2 and d3 to output
+ 109               		.loc 1 327 0
+ 110 0042 9091 0A01 		lds r25,266
+ 111 0046 9C6C      		ori r25,lo8(-52)
+ 112 0048 9093 0A01 		sts 266,r25
+ 328:LiquidCrystal.c ****   if ((value >> 0) & 0x01){
+ 329:LiquidCrystal.c ****     d0_high;
+ 113               		.loc 1 329 0
+ 114 004c 9091 0B01 		lds r25,267
+ 328:LiquidCrystal.c ****   if ((value >> 0) & 0x01){
+ 115               		.loc 1 328 0
+ 116 0050 80FF      		sbrs r24,0
+ 117 0052 00C0      		rjmp .L4
+ 118               		.loc 1 329 0
+ 119 0054 9460      		ori r25,lo8(4)
+ 120 0056 00C0      		rjmp .L12
+ 121               	.L4:
+ 330:LiquidCrystal.c ****   }
+ 331:LiquidCrystal.c ****   else{
+ 332:LiquidCrystal.c ****     d0_low;
+ 122               		.loc 1 332 0
+ 123 0058 9B7F      		andi r25,lo8(-5)
+ 124               	.L12:
+ 125 005a 9093 0B01 		sts 267,r25
+ 333:LiquidCrystal.c ****   }
+ 334:LiquidCrystal.c ****   if ((value >> 1) & 0x01){
+ 335:LiquidCrystal.c ****     d1_high;
+ 126               		.loc 1 335 0
+ 127 005e 9091 0B01 		lds r25,267
+ 334:LiquidCrystal.c ****     d1_high;
+ 128               		.loc 1 334 0
+ 129 0062 81FF      		sbrs r24,1
+ 130 0064 00C0      		rjmp .L6
+ 131               		.loc 1 335 0
+ 132 0066 9860      		ori r25,lo8(8)
+ 133 0068 00C0      		rjmp .L13
+ 134               	.L6:
+ 336:LiquidCrystal.c ****   }
+ 337:LiquidCrystal.c ****   else{
+ 338:LiquidCrystal.c ****     d1_low;
+ 135               		.loc 1 338 0
+ 136 006a 977F      		andi r25,lo8(-9)
+ 137               	.L13:
+ 138 006c 9093 0B01 		sts 267,r25
+ 339:LiquidCrystal.c ****   }
+ 340:LiquidCrystal.c ****   if ((value >> 2) & 0x01){
+ 341:LiquidCrystal.c ****     d2_high;
+ 139               		.loc 1 341 0
+ 140 0070 9091 0B01 		lds r25,267
+ 340:LiquidCrystal.c ****     d2_high;
+ 141               		.loc 1 340 0
+ 142 0074 82FF      		sbrs r24,2
+ 143 0076 00C0      		rjmp .L8
+ 144               		.loc 1 341 0
+ 145 0078 9064      		ori r25,lo8(64)
+ 146 007a 00C0      		rjmp .L14
+ 147               	.L8:
+ 342:LiquidCrystal.c ****   }
+ 343:LiquidCrystal.c ****   else{
+ 344:LiquidCrystal.c ****     d2_low;
+ 148               		.loc 1 344 0
+ 149 007c 9F7B      		andi r25,lo8(-65)
+ 150               	.L14:
+ 151 007e 9093 0B01 		sts 267,r25
+ 345:LiquidCrystal.c ****   }
+ 346:LiquidCrystal.c ****   if ((value >> 3) & 0x01){
+ 152               		.loc 1 346 0
+ 153 0082 83FF      		sbrs r24,3
+ 154 0084 00C0      		rjmp .L10
+ 347:LiquidCrystal.c ****     d3_high;
+ 155               		.loc 1 347 0
+ 156 0086 8091 0B01 		lds r24,267
+ 157               	.LVL5:
+ 158 008a 8068      		ori r24,lo8(-128)
+ 159 008c 00C0      		rjmp .L15
+ 160               	.LVL6:
+ 161               	.L10:
+ 348:LiquidCrystal.c ****   }
+ 349:LiquidCrystal.c ****   else{
+ 350:LiquidCrystal.c ****     d3_low;
+ 162               		.loc 1 350 0
+ 163 008e 8091 0B01 		lds r24,267
+ 164               	.LVL7:
+ 165 0092 8F77      		andi r24,lo8(127)
+ 166               	.L15:
+ 167 0094 8093 0B01 		sts 267,r24
+ 351:LiquidCrystal.c ****   }
+ 352:LiquidCrystal.c **** 
+ 353:LiquidCrystal.c ****   pulseEnable();
+ 168               		.loc 1 353 0
+ 169 0098 0C94 0000 		jmp pulseEnable
+ 170               	.LVL8:
+ 171               		.cfi_endproc
+ 172               	.LFE19:
+ 174               	.global	send
+ 176               	send:
+ 177               	.LFB17:
+ 292:LiquidCrystal.c ****   //digitalWrite(rs_pin, mode);
+ 178               		.loc 1 292 0
+ 179               		.cfi_startproc
+ 180               	.LVL9:
+ 181 009c CF93      		push r28
+ 182               	.LCFI0:
+ 183               		.cfi_def_cfa_offset 4
+ 184               		.cfi_offset 28, -3
+ 185               	/* prologue: function */
+ 186               	/* frame size = 0 */
+ 187               	/* stack size = 1 */
+ 188               	.L__stack_usage = 1
+ 189 009e C82F      		mov r28,r24
+ 295:LiquidCrystal.c ****   }
+ 190               		.loc 1 295 0
+ 191 00a0 9091 0801 		lds r25,264
+ 294:LiquidCrystal.c ****     rs_high;
+ 192               		.loc 1 294 0
+ 193 00a4 6623      		tst r22
+ 194 00a6 01F0      		breq .L18
+ 295:LiquidCrystal.c ****   }
+ 195               		.loc 1 295 0
+ 196 00a8 9064      		ori r25,lo8(64)
+ 197 00aa 00C0      		rjmp .L20
+ 198               	.L18:
+ 298:LiquidCrystal.c ****   }
+ 199               		.loc 1 298 0
+ 200 00ac 9F7B      		andi r25,lo8(-65)
+ 201               	.L20:
+ 202 00ae 9093 0801 		sts 264,r25
+ 309:LiquidCrystal.c ****     write4bits(value);
+ 203               		.loc 1 309 0
+ 204 00b2 8C2F      		mov r24,r28
+ 205               	.LVL10:
+ 206 00b4 8295      		swap r24
+ 207 00b6 8F70      		andi r24,lo8(15)
+ 208 00b8 0E94 0000 		call write4bits
+ 209               	.LVL11:
+ 310:LiquidCrystal.c ****   //}
+ 210               		.loc 1 310 0
+ 211 00bc 8C2F      		mov r24,r28
+ 212               	/* epilogue start */
+ 312:LiquidCrystal.c **** 
+ 213               		.loc 1 312 0
+ 214 00be CF91      		pop r28
+ 215               	.LVL12:
+ 310:LiquidCrystal.c ****   //}
+ 216               		.loc 1 310 0
+ 217 00c0 0C94 0000 		jmp write4bits
+ 218               	.LVL13:
+ 219               		.cfi_endproc
+ 220               	.LFE17:
+ 222               	.global	command
+ 224               	command:
+ 225               	.LFB14:
+ 274:LiquidCrystal.c ****   send(value, LOW);
+ 226               		.loc 1 274 0
+ 227               		.cfi_startproc
+ 228               	.LVL14:
+ 229               	/* prologue: function */
+ 230               	/* frame size = 0 */
+ 231               	/* stack size = 0 */
+ 232               	.L__stack_usage = 0
+ 275:LiquidCrystal.c **** }
+ 233               		.loc 1 275 0
+ 234 00c4 60E0      		ldi r22,0
+ 235 00c6 0C94 0000 		jmp send
+ 236               	.LVL15:
+ 237               		.cfi_endproc
+ 238               	.LFE14:
+ 240               	.global	LiquidCrystalclear
+ 242               	LiquidCrystalclear:
+ 243               	.LFB10:
+ 173:LiquidCrystal.c ****   command(LCD_CLEARDISPLAY);  // clear display, set cursor position to zero
+ 244               		.loc 1 173 0
+ 245               		.cfi_startproc
+ 246               	/* prologue: function */
+ 247               	/* frame size = 0 */
+ 248               	/* stack size = 0 */
+ 249               	.L__stack_usage = 0
+ 174:LiquidCrystal.c ****   _delay_us(2000);  // this command takes a long time!
+ 250               		.loc 1 174 0
+ 251 00ca 81E0      		ldi r24,lo8(1)
+ 252 00cc 0E94 0000 		call command
+ 253               	.LVL16:
+ 254               	.LBB34:
+ 255               	.LBB35:
+ 256               		.loc 2 276 0
+ 257 00d0 8FE9      		ldi r24,lo8(3999)
+ 258 00d2 9FE0      		ldi r25,hi8(3999)
+ 259 00d4 0197      	1:	sbiw r24,1
+ 260 00d6 01F4      		brne 1b
+ 261 00d8 00C0      		rjmp .
+ 262 00da 0000      		nop
+ 263 00dc 0895      		ret
+ 264               	.LBE35:
+ 265               	.LBE34:
+ 266               		.cfi_endproc
+ 267               	.LFE10:
+ 269               	.global	LiquidCrystalhome
+ 271               	LiquidCrystalhome:
+ 272               	.LFB11:
+ 179:LiquidCrystal.c ****   command(LCD_RETURNHOME);  // set cursor position to zero
+ 273               		.loc 1 179 0
+ 274               		.cfi_startproc
+ 275               	/* prologue: function */
+ 276               	/* frame size = 0 */
+ 277               	/* stack size = 0 */
+ 278               	.L__stack_usage = 0
+ 180:LiquidCrystal.c ****   _delay_us(2000);  // this command takes a long time!
+ 279               		.loc 1 180 0
+ 280 00de 82E0      		ldi r24,lo8(2)
+ 281 00e0 0E94 0000 		call command
+ 282               	.LVL17:
+ 283               	.LBB36:
+ 284               	.LBB37:
+ 285               		.loc 2 276 0
+ 286 00e4 8FE9      		ldi r24,lo8(3999)
+ 287 00e6 9FE0      		ldi r25,hi8(3999)
+ 288 00e8 0197      	1:	sbiw r24,1
+ 289 00ea 01F4      		brne 1b
+ 290 00ec 00C0      		rjmp .
+ 291 00ee 0000      		nop
+ 292 00f0 0895      		ret
+ 293               	.LBE37:
+ 294               	.LBE36:
+ 295               		.cfi_endproc
+ 296               	.LFE11:
+ 298               	.global	LiquidCrystalsetCursor
+ 300               	LiquidCrystalsetCursor:
+ 301               	.LFB12:
+ 185:LiquidCrystal.c ****   const size_t max_lines = sizeof(g_row_offsets) / sizeof(*g_row_offsets);
+ 302               		.loc 1 185 0
+ 303               		.cfi_startproc
+ 304               	.LVL18:
+ 305               	/* prologue: function */
+ 306               	/* frame size = 0 */
+ 307               	/* stack size = 0 */
+ 308               	.L__stack_usage = 0
+ 309 00f2 6430      		cpi r22,lo8(4)
+ 310 00f4 00F0      		brlo .L25
+ 311 00f6 63E0      		ldi r22,lo8(3)
+ 312               	.LVL19:
+ 313               	.L25:
+ 190:LiquidCrystal.c ****     row = g_numlines - 1;    // we count rows starting w/0
+ 314               		.loc 1 190 0
+ 315 00f8 9091 0000 		lds r25,g_numlines
+ 316 00fc 6917      		cp r22,r25
+ 317 00fe 00F0      		brlo .L26
+ 191:LiquidCrystal.c ****   }
+ 318               		.loc 1 191 0
+ 319 0100 6FEF      		ldi r22,lo8(-1)
+ 320               	.LVL20:
+ 321 0102 690F      		add r22,r25
+ 322               	.LVL21:
+ 323               	.L26:
+ 194:LiquidCrystal.c **** }
+ 324               		.loc 1 194 0
+ 325 0104 E62F      		mov r30,r22
+ 326 0106 F0E0      		ldi r31,0
+ 327 0108 E050      		subi r30,lo8(-(g_row_offsets))
+ 328 010a F040      		sbci r31,hi8(-(g_row_offsets))
+ 329 010c 9081      		ld r25,Z
+ 330 010e 890F      		add r24,r25
+ 331               	.LVL22:
+ 332 0110 8068      		ori r24,lo8(-128)
+ 333 0112 0C94 0000 		jmp command
+ 334               	.LVL23:
+ 335               		.cfi_endproc
+ 336               	.LFE12:
+ 338               	.global	LiquidCrystaldisplay
+ 340               	LiquidCrystaldisplay:
+ 341               	.LFB13:
+ 198:LiquidCrystal.c ****   g_displaycontrol |= LCD_DISPLAYON;
+ 342               		.loc 1 198 0
+ 343               		.cfi_startproc
+ 344               	/* prologue: function */
+ 345               	/* frame size = 0 */
+ 346               	/* stack size = 0 */
+ 347               	.L__stack_usage = 0
+ 199:LiquidCrystal.c ****   command(LCD_DISPLAYCONTROL | g_displaycontrol);
+ 348               		.loc 1 199 0
+ 349 0116 8091 0000 		lds r24,g_displaycontrol
+ 350 011a 982F      		mov r25,r24
+ 351 011c 9460      		ori r25,lo8(4)
+ 352 011e 9093 0000 		sts g_displaycontrol,r25
+ 200:LiquidCrystal.c **** }
+ 353               		.loc 1 200 0
+ 354 0122 8C60      		ori r24,lo8(12)
+ 355 0124 0C94 0000 		jmp command
+ 356               	.LVL24:
+ 357               		.cfi_endproc
+ 358               	.LFE13:
+ 360               	.global	LCDwrite
+ 362               	LCDwrite:
+ 363               	.LFB15:
+ 278:LiquidCrystal.c ****   send(value, HIGH);
+ 364               		.loc 1 278 0
+ 365               		.cfi_startproc
+ 366               	.LVL25:
+ 367               	/* prologue: function */
+ 368               	/* frame size = 0 */
+ 369               	/* stack size = 0 */
+ 370               	.L__stack_usage = 0
+ 279:LiquidCrystal.c ****   return 1; // assume sucess
+ 371               		.loc 1 279 0
+ 372 0128 61E0      		ldi r22,lo8(1)
+ 373 012a 0E94 0000 		call send
+ 374               	.LVL26:
+ 281:LiquidCrystal.c **** 
+ 375               		.loc 1 281 0
+ 376 012e 81E0      		ldi r24,lo8(1)
+ 377 0130 0895      		ret
+ 378               		.cfi_endproc
+ 379               	.LFE15:
+ 381               	.global	LCDprint
+ 383               	LCDprint:
+ 384               	.LFB16:
+ 283:LiquidCrystal.c ****   for (int i=0;i<len;i++){
+ 385               		.loc 1 283 0
+ 386               		.cfi_startproc
+ 387               	.LVL27:
+ 388 0132 EF92      		push r14
+ 389               	.LCFI1:
+ 390               		.cfi_def_cfa_offset 4
+ 391               		.cfi_offset 14, -3
+ 392 0134 FF92      		push r15
+ 393               	.LCFI2:
+ 394               		.cfi_def_cfa_offset 5
+ 395               		.cfi_offset 15, -4
+ 396 0136 0F93      		push r16
+ 397               	.LCFI3:
+ 398               		.cfi_def_cfa_offset 6
+ 399               		.cfi_offset 16, -5
+ 400 0138 1F93      		push r17
+ 401               	.LCFI4:
+ 402               		.cfi_def_cfa_offset 7
+ 403               		.cfi_offset 17, -6
+ 404 013a CF93      		push r28
+ 405               	.LCFI5:
+ 406               		.cfi_def_cfa_offset 8
+ 407               		.cfi_offset 28, -7
+ 408 013c DF93      		push r29
+ 409               	.LCFI6:
+ 410               		.cfi_def_cfa_offset 9
+ 411               		.cfi_offset 29, -8
+ 412               	/* prologue: function */
+ 413               	/* frame size = 0 */
+ 414               	/* stack size = 6 */
+ 415               	.L__stack_usage = 6
+ 416 013e 7C01      		movw r14,r24
+ 417               	.LVL28:
+ 418               	.LBB38:
+ 284:LiquidCrystal.c ****     LCDwrite(str[i]);
+ 419               		.loc 1 284 0
+ 420 0140 8C01      		movw r16,r24
+ 421 0142 C62F      		mov r28,r22
+ 422 0144 D0E0      		ldi r29,0
+ 423               	.LVL29:
+ 424               	.L30:
+ 425 0146 C801      		movw r24,r16
+ 426 0148 8E19      		sub r24,r14
+ 427 014a 9F09      		sbc r25,r15
+ 284:LiquidCrystal.c ****     LCDwrite(str[i]);
+ 428               		.loc 1 284 0 is_stmt 0 discriminator 1
+ 429 014c 8C17      		cp r24,r28
+ 430 014e 9D07      		cpc r25,r29
+ 431 0150 04F4      		brge .L32
+ 285:LiquidCrystal.c ****   }
+ 432               		.loc 1 285 0 is_stmt 1 discriminator 3
+ 433 0152 F801      		movw r30,r16
+ 434 0154 8191      		ld r24,Z+
+ 435 0156 8F01      		movw r16,r30
+ 436               	.LVL30:
+ 437 0158 0E94 0000 		call LCDwrite
+ 438               	.LVL31:
+ 439 015c 00C0      		rjmp .L30
+ 440               	.L32:
+ 441               	/* epilogue start */
+ 442               	.LBE38:
+ 287:LiquidCrystal.c **** 
+ 443               		.loc 1 287 0
+ 444 015e DF91      		pop r29
+ 445 0160 CF91      		pop r28
+ 446               	.LVL32:
+ 447 0162 1F91      		pop r17
+ 448 0164 0F91      		pop r16
+ 449               	.LVL33:
+ 450 0166 FF90      		pop r15
+ 451 0168 EF90      		pop r14
+ 452               	.LVL34:
+ 453 016a 0895      		ret
+ 454               		.cfi_endproc
+ 455               	.LFE16:
+ 457               	.global	begin
+ 459               	begin:
+ 460               	.LFB8:
+  79:LiquidCrystal.c ****   if (lines > 1) {
+ 461               		.loc 1 79 0
+ 462               		.cfi_startproc
+ 463               	.LVL35:
+ 464               	/* prologue: function */
+ 465               	/* frame size = 0 */
+ 466               	/* stack size = 0 */
+ 467               	.L__stack_usage = 0
+  80:LiquidCrystal.c ****     g_displayfunction |= LCD_2LINE;
+ 468               		.loc 1 80 0
+ 469 016c 6230      		cpi r22,lo8(2)
+ 470 016e 00F0      		brlo .L34
+  81:LiquidCrystal.c ****   }
+ 471               		.loc 1 81 0
+ 472 0170 9091 0000 		lds r25,g_displayfunction
+ 473 0174 9860      		ori r25,lo8(8)
+ 474 0176 9093 0000 		sts g_displayfunction,r25
+ 475               	.L34:
+  83:LiquidCrystal.c **** 
+ 476               		.loc 1 83 0
+ 477 017a 6093 0000 		sts g_numlines,r22
+ 478               	.LVL36:
+ 479               	.LBB39:
+ 480               	.LBB40:
+ 165:LiquidCrystal.c ****   g_row_offsets[1] = row1;
+ 481               		.loc 1 165 0
+ 482 017e 1092 0000 		sts g_row_offsets,__zero_reg__
+ 166:LiquidCrystal.c ****   g_row_offsets[2] = row2;
+ 483               		.loc 1 166 0
+ 484 0182 90E4      		ldi r25,lo8(64)
+ 485 0184 9093 0000 		sts g_row_offsets+1,r25
+ 167:LiquidCrystal.c ****   g_row_offsets[3] = row3;
+ 486               		.loc 1 167 0
+ 487 0188 8093 0000 		sts g_row_offsets+2,r24
+ 488               	.LBE40:
+ 489               	.LBE39:
+  85:LiquidCrystal.c **** 
+ 490               		.loc 1 85 0
+ 491 018c 90E0      		ldi r25,0
+ 492 018e 805C      		subi r24,-64
+ 493 0190 9F4F      		sbci r25,-1
+ 494               	.LVL37:
+ 495               	.LBB42:
+ 496               	.LBB41:
+ 168:LiquidCrystal.c **** }
+ 497               		.loc 1 168 0
+ 498 0192 8093 0000 		sts g_row_offsets+3,r24
+ 499               	.LVL38:
+ 500               	.LBE41:
+ 501               	.LBE42:
+ 502               	.LBB43:
+ 503               	.LBB44:
+ 504               		.loc 2 276 0
+ 505 0196 2FE7      		ldi r18,lo8(79999)
+ 506 0198 88E3      		ldi r24,hi8(79999)
+ 507 019a 91E0      		ldi r25,hlo8(79999)
+ 508 019c 2150      	1:	subi r18,1
+ 509 019e 8040      		sbci r24,0
+ 510 01a0 9040      		sbci r25,0
+ 511 01a2 01F4      		brne 1b
+ 512 01a4 00C0      		rjmp .
+ 513 01a6 0000      		nop
+ 514               	.LBE44:
+ 515               	.LBE43:
+  98:LiquidCrystal.c ****   enable_low;
+ 516               		.loc 1 98 0
+ 517 01a8 8091 0801 		lds r24,264
+ 518 01ac 8F7B      		andi r24,lo8(-65)
+ 519 01ae 8093 0801 		sts 264,r24
+  99:LiquidCrystal.c ****   //digitalWrite(enable_pin, LOW);
+ 520               		.loc 1 99 0
+ 521 01b2 8091 0801 		lds r24,264
+ 522 01b6 8F77      		andi r24,lo8(127)
+ 523 01b8 8093 0801 		sts 264,r24
+ 106:LiquidCrystal.c ****     // this is according to the hitachi HD44780 datasheet
+ 524               		.loc 1 106 0
+ 525 01bc 8091 0000 		lds r24,g_displayfunction
+ 526 01c0 84FD      		sbrc r24,4
+ 527 01c2 00C0      		rjmp .L35
+ 111:LiquidCrystal.c ****     _delay_us(4500); // wait min 4.1ms
+ 528               		.loc 1 111 0
+ 529 01c4 83E0      		ldi r24,lo8(3)
+ 530 01c6 0E94 0000 		call write4bits
+ 531               	.LVL39:
+ 532               	.LBB45:
+ 533               	.LBB46:
+ 534               		.loc 2 276 0
+ 535 01ca 87E2      		ldi r24,lo8(8999)
+ 536 01cc 93E2      		ldi r25,hi8(8999)
+ 537 01ce 0197      	1:	sbiw r24,1
+ 538 01d0 01F4      		brne 1b
+ 539 01d2 00C0      		rjmp .
+ 540 01d4 0000      		nop
+ 541               	.LBE46:
+ 542               	.LBE45:
+ 115:LiquidCrystal.c ****     _delay_us(4500); // wait min 4.1ms
+ 543               		.loc 1 115 0
+ 544 01d6 83E0      		ldi r24,lo8(3)
+ 545 01d8 0E94 0000 		call write4bits
+ 546               	.LVL40:
+ 547               	.LBB47:
+ 548               	.LBB48:
+ 549               		.loc 2 276 0
+ 550 01dc 87E2      		ldi r24,lo8(8999)
+ 551 01de 93E2      		ldi r25,hi8(8999)
+ 552 01e0 0197      	1:	sbiw r24,1
+ 553 01e2 01F4      		brne 1b
+ 554 01e4 00C0      		rjmp .
+ 555 01e6 0000      		nop
+ 556               	.LBE48:
+ 557               	.LBE47:
+ 119:LiquidCrystal.c ****     _delay_us(150);
+ 558               		.loc 1 119 0
+ 559 01e8 83E0      		ldi r24,lo8(3)
+ 560 01ea 0E94 0000 		call write4bits
+ 561               	.LVL41:
+ 562               	.LBB49:
+ 563               	.LBB50:
+ 564               		.loc 2 276 0
+ 565 01ee 8BE2      		ldi r24,lo8(299)
+ 566 01f0 91E0      		ldi r25,hi8(299)
+ 567 01f2 0197      	1:	sbiw r24,1
+ 568 01f4 01F4      		brne 1b
+ 569 01f6 00C0      		rjmp .
+ 570 01f8 0000      		nop
+ 571               	.LBE50:
+ 572               	.LBE49:
+ 123:LiquidCrystal.c ****   } else {
+ 573               		.loc 1 123 0
+ 574 01fa 82E0      		ldi r24,lo8(2)
+ 575 01fc 0E94 0000 		call write4bits
+ 576               	.LVL42:
+ 577 0200 00C0      		rjmp .L36
+ 578               	.LVL43:
+ 579               	.L35:
+ 129:LiquidCrystal.c ****     _delay_us(4500);  // wait more than 4.1ms
+ 580               		.loc 1 129 0
+ 581 0202 8062      		ori r24,lo8(32)
+ 582 0204 0E94 0000 		call command
+ 583               	.LVL44:
+ 584               	.LBB51:
+ 585               	.LBB52:
+ 586               		.loc 2 276 0
+ 587 0208 87E2      		ldi r24,lo8(8999)
+ 588 020a 93E2      		ldi r25,hi8(8999)
+ 589 020c 0197      	1:	sbiw r24,1
+ 590 020e 01F4      		brne 1b
+ 591 0210 00C0      		rjmp .
+ 592 0212 0000      		nop
+ 593               	.LBE52:
+ 594               	.LBE51:
+ 133:LiquidCrystal.c ****     _delay_us(150);
+ 595               		.loc 1 133 0
+ 596 0214 8091 0000 		lds r24,g_displayfunction
+ 597 0218 8062      		ori r24,lo8(32)
+ 598 021a 0E94 0000 		call command
+ 599               	.LVL45:
+ 600               	.LBB53:
+ 601               	.LBB54:
+ 602               		.loc 2 276 0
+ 603 021e 8BE2      		ldi r24,lo8(299)
+ 604 0220 91E0      		ldi r25,hi8(299)
+ 605 0222 0197      	1:	sbiw r24,1
+ 606 0224 01F4      		brne 1b
+ 607 0226 00C0      		rjmp .
+ 608 0228 0000      		nop
+ 609               	.LBE54:
+ 610               	.LBE53:
+ 137:LiquidCrystal.c ****   }
+ 611               		.loc 1 137 0
+ 612 022a 8091 0000 		lds r24,g_displayfunction
+ 613 022e 8062      		ori r24,lo8(32)
+ 614 0230 0E94 0000 		call command
+ 615               	.LVL46:
+ 616               	.L36:
+ 141:LiquidCrystal.c **** 
+ 617               		.loc 1 141 0
+ 618 0234 8091 0000 		lds r24,g_displayfunction
+ 619 0238 8062      		ori r24,lo8(32)
+ 620 023a 0E94 0000 		call command
+ 621               	.LVL47:
+ 144:LiquidCrystal.c ****   LiquidCrystaldisplay();
+ 622               		.loc 1 144 0
+ 623 023e 84E0      		ldi r24,lo8(4)
+ 624 0240 8093 0000 		sts g_displaycontrol,r24
+ 145:LiquidCrystal.c **** 
+ 625               		.loc 1 145 0
+ 626 0244 0E94 0000 		call LiquidCrystaldisplay
+ 627               	.LVL48:
+ 148:LiquidCrystal.c **** 
+ 628               		.loc 1 148 0
+ 629 0248 0E94 0000 		call LiquidCrystalclear
+ 630               	.LVL49:
+ 151:LiquidCrystal.c ****   // set the entry mode
+ 631               		.loc 1 151 0
+ 632 024c 82E0      		ldi r24,lo8(2)
+ 633 024e 8093 0000 		sts g_displaymode,r24
+ 153:LiquidCrystal.c **** 
+ 634               		.loc 1 153 0
+ 635 0252 86E0      		ldi r24,lo8(6)
+ 636 0254 0C94 0000 		jmp command
+ 637               	.LVL50:
+ 638               		.cfi_endproc
+ 639               	.LFE8:
+ 641               	.global	LiquidCrystalinit
+ 643               	LiquidCrystalinit:
+ 644               	.LFB7:
+  48:LiquidCrystal.c ****   DDRA = DDRA | 1; //switch on power pin to periferals card
+ 645               		.loc 1 48 0
+ 646               		.cfi_startproc
+ 647               	/* prologue: function */
+ 648               	/* frame size = 0 */
+ 649               	/* stack size = 0 */
+ 650               	.L__stack_usage = 0
+  49:LiquidCrystal.c ****   PORTA = PORTA | 1;
+ 651               		.loc 1 49 0
+ 652 0258 089A      		sbi 0x1,0
+  50:LiquidCrystal.c ****   DDRL = DDRL | 0x10; //switch on power pin backlight
+ 653               		.loc 1 50 0
+ 654 025a 109A      		sbi 0x2,0
+  51:LiquidCrystal.c ****   PORTL = PORTL & 0xEF;
+ 655               		.loc 1 51 0
+ 656 025c EAE0      		ldi r30,lo8(10)
+ 657 025e F1E0      		ldi r31,lo8(1)
+ 658 0260 8081      		ld r24,Z
+ 659 0262 8061      		ori r24,lo8(16)
+ 660 0264 8083      		st Z,r24
+  52:LiquidCrystal.c ****   _delay_us(500);
+ 661               		.loc 1 52 0
+ 662 0266 EBE0      		ldi r30,lo8(11)
+ 663 0268 F1E0      		ldi r31,lo8(1)
+ 664 026a 8081      		ld r24,Z
+ 665 026c 8F7E      		andi r24,lo8(-17)
+ 666 026e 8083      		st Z,r24
+ 667               	.LVL51:
+ 668               	.LBB55:
+ 669               	.LBB56:
+ 670               		.loc 2 276 0
+ 671 0270 87EE      		ldi r24,lo8(999)
+ 672 0272 93E0      		ldi r25,hi8(999)
+ 673 0274 0197      	1:	sbiw r24,1
+ 674 0276 01F4      		brne 1b
+ 675 0278 00C0      		rjmp .
+ 676 027a 0000      		nop
+ 677               	.LBE56:
+ 678               	.LBE55:
+  55:LiquidCrystal.c ****   PORTB = PORTB | 0x80;
+ 679               		.loc 1 55 0
+ 680 027c 279A      		sbi 0x4,7
+  56:LiquidCrystal.c **** 
+ 681               		.loc 1 56 0
+ 682 027e 2F9A      		sbi 0x5,7
+  60:LiquidCrystal.c ****   //PORTK = PORTK | 0x20;
+ 683               		.loc 1 60 0
+ 684 0280 E7E0      		ldi r30,lo8(7)
+ 685 0282 F1E0      		ldi r31,lo8(1)
+ 686 0284 8081      		ld r24,Z
+ 687 0286 8064      		ori r24,lo8(64)
+ 688 0288 8083      		st Z,r24
+  69:LiquidCrystal.c **** 
+ 689               		.loc 1 69 0
+ 690 028a 8081      		ld r24,Z
+ 691 028c 8068      		ori r24,lo8(-128)
+ 692 028e 8083      		st Z,r24
+  72:LiquidCrystal.c ****   else
+ 693               		.loc 1 72 0
+ 694 0290 1092 0000 		sts g_displayfunction,__zero_reg__
+  76:LiquidCrystal.c **** }
+ 695               		.loc 1 76 0
+ 696 0294 64E0      		ldi r22,lo8(4)
+ 697 0296 84E1      		ldi r24,lo8(20)
+ 698 0298 0C94 0000 		jmp begin
+ 699               	.LVL52:
+ 700               		.cfi_endproc
+ 701               	.LFE7:
+ 703               		.comm	g_row_offsets,4,1
+ 704               		.comm	g_numlines,1,1
+ 705               		.comm	g_initialized,1,1
+ 706               		.comm	g_displaymode,1,1
+ 707               		.comm	g_displaycontrol,1,1
+ 708               		.comm	g_displayfunction,1,1
+ 709               	.Letext0:
+ 710               		.file 3 "c:\\program files (x86)\\arduino\\hardware\\tools\\avr\\avr\\include\\stdint.h"
+ 711               		.file 4 "c:\\program files (x86)\\arduino\\hardware\\tools\\avr\\lib\\gcc\\avr\\4.9.2\\include\\st
+DEFINED SYMBOLS
+                            *ABS*:00000000 LiquidCrystal.c
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:2      *ABS*:0000003e __SP_H__
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:3      *ABS*:0000003d __SP_L__
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:4      *ABS*:0000003f __SREG__
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:5      *ABS*:0000003b __RAMPZ__
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:6      *ABS*:00000000 __tmp_reg__
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:7      *ABS*:00000001 __zero_reg__
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:13     .text:00000000 setRowOffsets
+                            *COM*:00000004 g_row_offsets
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:39     .text:0000000e pulseEnable
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:100    .text:00000042 write4bits
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:176    .text:0000009c send
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:224    .text:000000c4 command
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:242    .text:000000ca LiquidCrystalclear
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:271    .text:000000de LiquidCrystalhome
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:300    .text:000000f2 LiquidCrystalsetCursor
+                            *COM*:00000001 g_numlines
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:340    .text:00000116 LiquidCrystaldisplay
+                            *COM*:00000001 g_displaycontrol
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:362    .text:00000128 LCDwrite
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:383    .text:00000132 LCDprint
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:459    .text:0000016c begin
+                            *COM*:00000001 g_displayfunction
+                            *COM*:00000001 g_displaymode
+C:\Users\Luke\AppData\Local\Temp\cctj09u6.s:643    .text:00000258 LiquidCrystalinit
+                            *COM*:00000001 g_initialized
+
+UNDEFINED SYMBOLS
+__do_clear_bss

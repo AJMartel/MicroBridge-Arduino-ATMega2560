@@ -83,7 +83,7 @@ LICENSE:
 //*	Nov  9,	2010	<MLS> Issue 392:Fixed bug that 3 !!! in code would cause it to jump to monitor
 //*	Jun 24,	2011	<MLS> Removed analogRead (was not used)
 //*	Dec 29,	2011	<MLS> Issue 181: added watch dog timmer support
-//*	Dec 29,	2011	<MLS> Issue 505:  bootloader is comparing the seqNum to 1 or the current sequence 
+//*	Dec 29,	2011	<MLS> Issue 505:  bootloader is comparing the seqNum to 1 or the current sequence
 //*	Jan  1,	2012	<MLS> Issue 543: CMD_CHIP_ERASE_ISP now returns STATUS_CMD_FAILED instead of STATUS_CMD_OK
 //*	Jan  1,	2012	<MLS> Issue 543: Write EEPROM now does something (NOT TESTED)
 //*	Jan  1,	2012	<MLS> Issue 544: stk500v2 bootloader doesn't support reading fuses
@@ -93,8 +93,8 @@ LICENSE:
 //*	these are used to test issues
 //*	http://code.google.com/p/arduino/issues/detail?id=505
 //*	Reported by mark.stubbs, Mar 14, 2011
-//*	The STK500V2 bootloader is comparing the seqNum to 1 or the current sequence 
-//*	(IE: Requiring the sequence to be 1 or match seqNum before continuing).  
+//*	The STK500V2 bootloader is comparing the seqNum to 1 or the current sequence
+//*	(IE: Requiring the sequence to be 1 or match seqNum before continuing).
 //*	The correct behavior is for the STK500V2 to accept the PC's sequence number, and echo it back for the reply message.
 #define	_FIX_ISSUE_505_
 //************************************************************************
@@ -114,12 +114,15 @@ LICENSE:
 
 #include <string.h>
 #include "pff.h"
+//#include "Arduino.h"
+#include "LiquidCrystal.h"
 
 void flash_erase (DWORD);				/* Erase a flash page (asmfunc.S) */
 void flash_write (DWORD, const BYTE*);	/* Program a flash page (asmfunc.S) */
+unsigned int crc16file(DWORD);
+BYTE ascii_to_nibble(char c);
 
-
-#define BLINK_LED_WHILE_WAITING
+//#define BLINK_LED_WHILE_WAITING
 //#define _DEBUG_WITH_LEDS_
 //#define _DEBUG_SERIAL_
 
@@ -157,14 +160,14 @@ void flash_write (DWORD, const BYTE*);	/* Program a flash page (asmfunc.S) */
 //************************************************************************
 #define		BLINK_LED_WHILE_WAITING
 
-#define PROGLED_PORT	PORTB
-#define PROGLED_DDR		DDRB
-#define PROGLED_PIN		PINB7
+#define PROGLED_PORT	PORTA
+#define PROGLED_DDR		DDRA
+#define PROGLED_PIN		PINA5
 
 #ifdef _MEGA_BOARD_
-	#define PROGLED_PORT	PORTB
-	#define PROGLED_DDR		DDRB
-	#define PROGLED_PIN		PINB7
+	#define PROGLED_PORT	PORTA
+	#define PROGLED_DDR		DDRA
+	#define PROGLED_PIN		PINA5
 #elif defined( _BOARD_AMBER128_ )
 	//*	this is for the amber 128 http://www.soc-robotics.com/
 	//*	onbarod led is PORTE4
@@ -541,6 +544,105 @@ void (*app_start)(void) = 0;
 uint8_t check = 1;
 
 
+unsigned int crc16file(DWORD fs) {
+  unsigned int crc_value = 0x0000; //if not self.mdflag else 0xffff
+  unsigned long tmp = 0;
+  unsigned long rotated = 0, count = 0;
+  unsigned short crc = 0;
+	WORD br;	/* Bytes read */
+	DWORD rm=fs; /*bytes remianing*/
+	uint16_t scan;
+  int var = 0;
+  char d = 0;
+	int status=0;
+	LiquidCrystalsetCursor(0,2);
+
+	for (count = 0; count < 0x3E000; count += SPM_PAGESIZE) {	/* Update all application pages */
+
+		//delay_ms(50);
+
+		memset(Buff, 0x00, SPM_PAGESIZE);
+			pf_read(Buff, SPM_PAGESIZE, &br,&rm);	/* Load a page data */
+			if (rm > SPM_PAGESIZE){
+				scan = SPM_PAGESIZE;
+			}
+			else {
+				scan = rm;
+				//sendchar('D');
+				//sendchar('V');
+				//sendchar(scan>>8);
+				//sendchar(scan&0x00FF);
+				//LCDwrite('D');
+			}
+			if (!br){
+				//LCDwrite('E');
+				break;
+			}
+
+			for (int i=0;i<scan;i++){
+				//sendchar(scan-i);
+				d=Buff[i];
+				tmp = crc_value ^ d;
+				rotated = crc_value >> 8;
+				crc = tmp & 0x00ff;
+
+				for (int j = 0; j < 8; j++) {
+					if (crc & 0x0001) {
+						crc = (crc >> 1) ^ 0xA001;
+					}
+					else  crc >>= 1;
+				}
+
+				crc_value = rotated ^ crc;
+				//sendchar(crc_value>>8);
+				//sendchar(crc_value&0x00FF);
+			}
+
+			//sendchar(rm/SPM_PAGESIZE);
+			displayStatus(fs,rm);
+
+	 }
+	 //sendchar('E');
+	 //sendchar('V');
+	 //sendchar(crc_value>>8);
+	 //sendchar(crc_value&0x00FF);
+  return crc_value;
+
+}
+
+BYTE ascii_to_nibble(char c) {
+  if (c >= '0' && c <= '9') {
+    return (BYTE) (c - '0');
+  }
+  else if (c >= 'A' && c <= 'F') {
+    return (BYTE) (c - 'A' + 10);
+  }
+  else {
+    return (BYTE) (c - 'a' + 10);
+  }
+}
+
+void displayStatus(DWORD fs,DWORD rm){
+	static DWORD current = 0;
+	DWORD fivePercent = fs/21;
+
+	if ((fs-rm)<fivePercent){
+		current = fivePercent;
+	}
+	//if (rm<fivePercent){
+		//current = fs-fivePercent;
+	//}
+	if ((fs-rm)>current){
+		LCDwrite(219);
+		if (rm>fivePercent){
+			current = current + fivePercent;
+		}
+		else{
+			current=fs;
+		}
+	}
+}
+
 //*****************************************************************************
 int main(void)
 {
@@ -583,11 +685,11 @@ int main(void)
 	WDTCSR	|=	_BV(WDCE) | _BV(WDE);
 	WDTCSR	=	0;
 	__asm__ __volatile__ ("sei");
-    
-    
-    
-       
-    
+
+
+
+
+
 	// check if WDT generated the reset, if so, go straight to app
 	//if (mcuStatusReg & _BV(WDRF))
 	//{
@@ -596,9 +698,19 @@ int main(void)
 	//************************************************************************
 #endif
 
+ LiquidCrystalinit();
+ LCDprint("Boot Start",10);
 
+
+ DDRA = DDRA | 2; //switch on power pin to sd card
+ PORTA = PORTA & 0xFD;
 	boot_timer	=	0;
 	boot_state	=	0;
+
+
+	DDRE = DDRE | 3; //switch on power pin to sd card
+	PORTE = PORTE & 0xFC;
+
 
 #ifdef BLINK_LED_WHILE_WAITING
 //	boot_timeout	=	 90000;		//*	should be about 4 seconds
@@ -638,7 +750,7 @@ int main(void)
 #endif
 	UART_BAUD_RATE_LOW	=	UART_BAUD_SELECT(BAUDRATE,F_CPU);
 	UART_CONTROL_REG	=	(1 << UART_ENABLE_RECEIVER) | (1 << UART_ENABLE_TRANSMITTER);
-
+ 	//UART_STATUS_REG	&=	0x20;
 	asm volatile ("nop");			// wait until port has changed
 
 
@@ -659,6 +771,7 @@ int main(void)
 
 	while (boot_state==0)
 	{
+
 		while ((!(Serial_Available())) && (boot_state == 0))		// wait for data
 		{
 			_delay_ms(0.001);
@@ -678,14 +791,16 @@ int main(void)
         /* PROG_PIN pulled low, indicate with LED that bootloader is active */
         //	PROGLED_PORT	&=	~(1<<PROGLED_PIN);	// active low LED ON
         // SDCARD BOOTLOADER
-        
-        
+
+
 		boot_state++; // ( if boot_state=1 bootloader received byte from UART, enter bootloader mode)
 		}
 
 
 	if (boot_state==1)
 	{
+		LiquidCrystalclear();
+		LCDprint("Boot Serial",11);
 		//*	main loop
 		while (!isLeave)
 		{
@@ -704,7 +819,7 @@ int main(void)
 				{
 				//	c	=	recchar();
 					c	=	recchar_timeout();
-					
+
 				}
 
 			#ifdef ENABLE_MONITOR
@@ -1135,7 +1250,7 @@ int main(void)
 			}
 			sendchar(checksum);
 			seqNum++;
-	
+
 		#ifndef REMOVE_BOOTLOADER_LED
 			//*	<MLS>	toggle the LED
 			PROGLED_PORT	^=	(1<<PROGLED_PIN);	// active high LED ON
@@ -1143,50 +1258,116 @@ int main(void)
 
 		}
 	}
-    
+
     if(boot_state == 2){
+			LiquidCrystalclear();
+			LCDprint("SD",2);
+
+delay_ms(2000);
+
     	sendchar('A');
+			DDRA = DDRA | 2; //switch on power pin to sd card
+			PORTA = PORTA | 2;
+			delay_ms(50);
+
+			sendchar(pf_mount(&Fatfs));	/* Initialize file system */
+			delay_ms(50);
+			/*
         if(eeprom_read_byte(0xFFF) == 0xF0){
         	DDRB = DDRB & 0x0F;
         	PORTB = PORTB & 0xF0;
-	    	DDRA = DDRA | 2; //switch on power pin to sd card
-	 		PORTA = PORTA | 2;
-	 		delay_ms(50);
+				}*/
+				DWORD rmrcr; /*bytes remianing*/
+				if (pf_open("ACT.GO",&rmrcr)==FR_OK){
+					LiquidCrystalclear();
+					LCDprint("SD Boot",7);
 
+delay_ms(2000);
         	sendchar('B');
-            sendchar(pf_mount(&Fatfs));	/* Initialize file system */
-            int pfstatus=pf_open("ACT.BIN");
-            sendchar(pfstatus);
+         	WORD brcrc;	/* Bytes read */
+					memset(Buff, 0xFF, 5);
+					pf_read(Buff, 5, &brcrc,&rmrcr);	/* Load a page data */
+					uint8_t test=0;
+					for (int crcCalcLoop=0;crcCalcLoop<5;crcCalcLoop++){
+						if (Buff[crcCalcLoop]==0xFF){
+							test=1;
+							LiquidCrystalsetCursor(0,1);
+							LCDprint("Bad Data",8);
+							delay_ms(2000);
+						}
+					}
+					if (!test){
+	          unsigned int datacrc = (ascii_to_nibble(Buff[0]) * 10000) + (ascii_to_nibble(Buff[1]) * 1000) + (ascii_to_nibble(Buff[2]) * 100) + (ascii_to_nibble(Buff[3]) * 10) + ascii_to_nibble(Buff[4]);
+							sendchar('D');
+						 	DWORD filesize;
+							int pfstatus=pf_open("ACT.BIN",&filesize);
 
-           if( pfstatus== FR_OK){
-           	   sendchar('C');
-               DWORD fa;	/* Flash address */
-               WORD br;	/* Bytes read */
-               uint8_t i = 0;
-               sendchar(0x0d);
-               sendchar(0x0a);
-               for (fa = 0; fa < 0x3E000; fa += SPM_PAGESIZE) {	/* Update all application pages */
-                   PROGLED_PORT	^=	(1<<PROGLED_PIN);	// turn LED ON
-                   delay_ms(50);
-                   flash_erase(fa);					/* Erase a page */
-                   memset(Buff, 0xFF, SPM_PAGESIZE);	/* Clear buffer */
-                   pf_read(Buff, SPM_PAGESIZE, &br);	/* Load a page data */
-                   if(br) flash_write(fa, Buff);		/* Write it if the data is available */
-                }
-               sendchar(0x0d);
-               sendchar(0x0a);
-               check = 0;
-               eeprom_write_byte (0xFFF, 0xFF);
+	            sendchar(pfstatus);
+
+	           if( pfstatus== FR_OK){
+							 LiquidCrystalsetCursor(0,1);
+							 LCDprint("Checking File",13);
+	           	   sendchar('C');
+								 uint16_t filecrc=crc16file(filesize);
+								 if (filecrc==datacrc){
+
+									 LiquidCrystalclear();
+				 					 LCDprint("SD Boot",7);
+									 LiquidCrystalsetCursor(0,1);
+									 LCDprint("File OK Flashing",16);
+									 LiquidCrystalsetCursor(0,2);
+
+
+									 pf_lseek(0);
+									 sendchar('D');
+		               DWORD fa;	/* Flash address */
+		               WORD br;	/* Bytes read */
+							 		 DWORD rm; /*bytes remianing*/
+		               uint8_t i = 0;
+
+		               sendchar(0x0d);
+		               sendchar(0x0a);
+		               for (fa = 0; fa < 0x3E000; fa += SPM_PAGESIZE) {	/* Update all application pages */
+		                   PROGLED_PORT	^=	(1<<PROGLED_PIN);	// turn LED ON
+		                   delay_ms(50);
+		                   flash_erase(fa);					/* Erase a page */
+		                   memset(Buff, 0xFF, SPM_PAGESIZE);	/* Clear buffer */
+		                   pf_read(Buff, SPM_PAGESIZE, &br,&rm);	/* Load a page data */
+		                   if(br) flash_write(fa, Buff);		/* Write it if the data is available */
+											 displayStatus(0x3E000,(0x3E000-fa));
+		                }
+		               sendchar(0x0d);
+		               sendchar(0x0a);
+		               check = 0;
+
+	               //eeprom_write_byte (0xFFF, 0xFF);
+							 }
+							 else{
+								 LiquidCrystalclear();
+								 LCDprint("Bad CRC",7);
+								 delay_ms(2000);
+							 }
+					 	}
+						else{
+							LiquidCrystalsetCursor(0,1);
+							LCDprint("No Firmware File",16);
+							delay_ms(2000);
+						}
            }
         }
+				else{
+					LiquidCrystalsetCursor(0,1);
+					LCDprint("No Other File",13);
+					delay_ms(2000);
+				}
     }
 
 
 	asm volatile ("nop");			// wait until port has changed
-    
 
 
-          
+
+
 //    // SDCARD BOOTLOADER
 //
 //    WORD fa;	/* Flash address */
@@ -1199,11 +1380,11 @@ int main(void)
 //
 //	if (pf_open("app.bin") == FR_OK) {	/* Open application file */
 //        PROGLED_PORT	|=	(1<<PROGLED_PIN);	// turn LED on
-//		
+//
 //        for (fa = 0; fa < 0x1000; fa += SPM_PAGESIZE) {	/* Update all application pages */
 //            memset(Buff, 0xFF, SPM_PAGESIZE);		/* Clear buffer */
 //            pf_read(Buff, SPM_PAGESIZE, &br);		/* Load a page data */
-//            
+//
 //			if (br) {					/* Bytes Read > 0? */
 //            	for (i = br; i < SPM_PAGESIZE; i++)     /* Pad the remaining last page with 0xFF so that comparison goes OK */
 //                    Buff[i] = 0xFF;
@@ -1214,19 +1395,19 @@ int main(void)
 //            }
 //    	}
 //        PROGLED_PORT	&=	~(1<<PROGLED_PIN);	// turn LED off
-//        
+//
 //    }
-//    
+//
 //    if (pgm_read_word(0) != 0xFFFF)		/* Start application if exist */
 //        asm volatile("jmp 0000");
 //    // SD CARD BOOTLOADER
 
-    
+
 	/*
 	 * Now leave bootloader
 	 */
 
-	UART_STATUS_REG	&=	0xfd;
+	//UART_STATUS_REG	&=	0xfd;
 	boot_rww_enable();				// enable application section
 
 

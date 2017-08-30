@@ -817,7 +817,8 @@ FRESULT pf_mount (
 /*-----------------------------------------------------------------------*/
 
 FRESULT pf_open (
-	const char *path	/* Pointer to the file name */
+	const char *path,	/* Pointer to the file name */
+	DWORD* remain
 )
 {
 	FRESULT res;
@@ -841,6 +842,8 @@ FRESULT pf_open (
 	fs->fptr = 0;						/* File pointer */
 	fs->flag = FA_OPENED;
 
+	*remain = LD_DWORD(dir+DIR_FileSize);
+
 	return FR_OK;
 }
 
@@ -855,12 +858,13 @@ FRESULT pf_open (
 FRESULT pf_read (
 	void* buff,		/* Pointer to the read buffer (NULL:Forward data to the stream)*/
 	WORD btr,		/* Number of bytes to read */
-	WORD* br		/* Pointer to number of bytes read */
+	WORD* br,		/* Pointer to number of bytes read */
+	DWORD* remain
 )
 {
 	DRESULT dr;
 	CLUST clst;
-	DWORD sect, remain;
+	DWORD sect; //remain;
 	WORD rcnt;
 	BYTE cs, *rbuff = buff;
 	FATFS *fs = FatFs;
@@ -871,8 +875,8 @@ FRESULT pf_read (
 	if (!(fs->flag & FA_OPENED))		/* Check if opened */
 		return FR_NOT_OPENED;
 
-	remain = fs->fsize - fs->fptr;
-	if (btr > remain) btr = (WORD)remain;			/* Truncate btr by remaining bytes */
+	*remain = fs->fsize - fs->fptr;
+	if (btr > *remain) btr = (WORD)*remain;			/* Truncate btr by remaining bytes */
 
 	while (btr)	{									/* Repeat until all data transferred */
 		if ((fs->fptr % 512) == 0) {				/* On the sector boundary? */
@@ -979,7 +983,7 @@ fw_abort:
 /*-----------------------------------------------------------------------*/
 /* Seek File R/W Pointer                                                 */
 /*-----------------------------------------------------------------------*/
-#if _USE_LSEEK
+//#if _USE_LSEEK
 
 FRESULT pf_lseek (
 	DWORD ofs		/* File pointer from top of file */
@@ -1027,7 +1031,7 @@ fe_abort:
 	fs->flag = 0;
 	return FR_DISK_ERR;
 }
-#endif
+//#endif
 
 
 
@@ -1111,4 +1115,3 @@ FRESULT pf_readdir (
 }
 
 #endif /* _USE_DIR */
-

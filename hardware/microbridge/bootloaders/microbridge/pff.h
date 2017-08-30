@@ -30,7 +30,7 @@
 
 #define	_USE_DIR	0	/* 1:Enable pf_opendir() and pf_readdir() */
 
-#define	_USE_LSEEK	0	/* 1:Enable pf_lseek() */
+#define	_USE_LSEEK	1	/* 1:Enable pf_lseek() */
 
 #define	_USE_WRITE	0	/* 1:Enable pf_write() */
 
@@ -135,8 +135,8 @@ typedef enum {
 /* Petit FatFs module application interface                     */
 
 FRESULT pf_mount (FATFS*);						/* Mount/Unmount a logical drive */
-FRESULT pf_open (const char*);					/* Open a file */
-FRESULT pf_read (void*, WORD, WORD*);			/* Read data from the open file */
+FRESULT pf_open (const char*,DWORD*);					/* Open a file */
+FRESULT pf_read (void*, WORD, WORD*,DWORD*);			/* Read data from the open file */
 FRESULT pf_write (const void*, WORD, WORD*);	/* Write data to the open file */
 FRESULT pf_lseek (DWORD);						/* Move file pointer of the open file */
 FRESULT pf_opendir (DIR*, const char*);			/* Open a directory */
