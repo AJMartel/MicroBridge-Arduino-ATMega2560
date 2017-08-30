@@ -1260,11 +1260,6 @@ int main(void)
 	}
 
     if(boot_state == 2){
-			LiquidCrystalclear();
-			LCDprint("SD",2);
-
-delay_ms(2000);
-
     	sendchar('A');
 			DDRA = DDRA | 2; //switch on power pin to sd card
 			PORTA = PORTA | 2;
@@ -1282,7 +1277,6 @@ delay_ms(2000);
 					LiquidCrystalclear();
 					LCDprint("SD Boot",7);
 
-delay_ms(2000);
         	sendchar('B');
          	WORD brcrc;	/* Bytes read */
 					memset(Buff, 0xFF, 5);
@@ -1355,11 +1349,12 @@ delay_ms(2000);
 						}
            }
         }
+				/*
 				else{
 					LiquidCrystalsetCursor(0,1);
 					LCDprint("No Other File",13);
 					delay_ms(2000);
-				}
+				}*/
     }
 
 
