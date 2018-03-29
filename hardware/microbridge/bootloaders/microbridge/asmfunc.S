@@ -11,8 +11,8 @@
 //#define	PORT_CS	_SFR_IO_ADDR(PORTB), 2
 
 // Arduino Ethernet
-#define	DDR_CS	_SFR_IO_ADDR(DDRB), 0	// MMC CS pin (DDR, PORT)
-#define	PORT_CS	_SFR_IO_ADDR(PORTB), 0
+#define	DDR_CS	_SFR_IO_ADDR(DDRB), 6	// MMC CS pin (DDR, PORT)
+#define	PORT_CS	_SFR_IO_ADDR(PORTB), 6
 
 
 #define	DDR_CK	_SFR_IO_ADDR(DDRB), 1	// MMC SCLK pin (DDR, PORT)
@@ -58,7 +58,7 @@ init_spi:
 .global dly_100us
 .func dly_100us
 dly_100us:
-	ldi	r24, lo8(16000000 / 100000)	/* Loop counter */
+	ldi	r24, lo8(8000000 / 100000)	/* Loop counter */
 1:	sbiw	r30, 1		/* 10 clocks per loop */
 	sbiw	r30, 1
 	sbiw	r30, 1
